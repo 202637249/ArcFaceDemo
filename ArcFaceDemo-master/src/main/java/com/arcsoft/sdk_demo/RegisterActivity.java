@@ -91,6 +91,7 @@ public class RegisterActivity extends Activity implements SurfaceHolder.Callback
 		view = new Thread(new Runnable() {
 			@Override
 			public void run() {
+				//等待holder创建
 				while (mSurfaceHolder == null) {
 					try {
 						Thread.sleep(100);
@@ -98,9 +99,10 @@ public class RegisterActivity extends Activity implements SurfaceHolder.Callback
 						e.printStackTrace();
 					}
 				}
-
+                //创建字节数组 大小由拍照传来的图片尺寸决定
 				byte[] data = new byte[mBitmap.getWidth() * mBitmap.getHeight() * 3 / 2];
 				try {
+				    //将bitmap转换成nv21，结果保存到data数组中
 					ImageConverter convert = new ImageConverter();
 					convert.initial(mBitmap.getWidth(), mBitmap.getHeight(), ImageConverter.CP_PAF_NV21);
 					if (convert.convert(mBitmap, data)) {
@@ -110,13 +112,17 @@ public class RegisterActivity extends Activity implements SurfaceHolder.Callback
 				} catch (Exception e) {
 					e.printStackTrace();
 				}
-
+                //创建FD人脸检测引擎
 				AFD_FSDKEngine engine = new AFD_FSDKEngine();
 				AFD_FSDKVersion version = new AFD_FSDKVersion();
-				List<AFD_FSDKFace> result = new ArrayList<AFD_FSDKFace>();
-				AFD_FSDKError err = engine.AFD_FSDK_InitialFaceEngine(FaceDB.appid, FaceDB.fd_key, AFD_FSDKEngine.AFD_OPF_0_HIGHER_EXT, 16, 5);
+				List<AFD_FSDKFace> result = new ArrayList<AFD_FSDKFace>(); //注册结果？ 人脸探测结果
+                //初始化引擎
+				AFD_FSDKError err = engine.AFD_FSDK_InitialFaceEngine(
+				        FaceDB.appid, FaceDB.fd_key, AFD_FSDKEngine.AFD_OPF_0_HIGHER_EXT, 16, 300);
+				//错误码
 				Log.d(TAG, "AFD_FSDK_InitialFaceEngine = " + err.getCode());
 				if (err.getCode() != AFD_FSDKError.MOK) {
+				    //引擎初始化失败
 					Message reg = Message.obtain();
 					reg.what = MSG_CODE;
 					reg.arg1 = MSG_EVENT_FD_ERROR;
@@ -125,9 +131,12 @@ public class RegisterActivity extends Activity implements SurfaceHolder.Callback
 				}
 				err = engine.AFD_FSDK_GetVersion(version);
 				Log.d(TAG, "AFD_FSDK_GetVersion =" + version.toString() + ", " + err.getCode());
+
+				//FD人脸探测，转化的nv21数据数组，传入图片的宽度、高度、NV21、探测结果
 				err  = engine.AFD_FSDK_StillImageFaceDetection(data, mBitmap.getWidth(), mBitmap.getHeight(), AFD_FSDKEngine.CP_PAF_NV21, result);
 				Log.d(TAG, "AFD_FSDK_StillImageFaceDetection =" + err.getCode() + "<" + result.size());
 				while (mSurfaceHolder != null) {
+				    //描绘线框
 					Canvas canvas = mSurfaceHolder.lockCanvas();
 					if (canvas != null) {
 						Paint mPaint = new Paint();
@@ -163,12 +172,14 @@ public class RegisterActivity extends Activity implements SurfaceHolder.Callback
 				}
 
 				if (!result.isEmpty()) {
+				    //探测结果不为空-存在人脸 FR 人脸识别
 					AFR_FSDKVersion version1 = new AFR_FSDKVersion();
 					AFR_FSDKEngine engine1 = new AFR_FSDKEngine();
 					AFR_FSDKFace result1 = new AFR_FSDKFace();
 					AFR_FSDKError error1 = engine1.AFR_FSDK_InitialEngine(FaceDB.appid, FaceDB.fr_key);
 					Log.d("com.arcsoft", "AFR_FSDK_InitialEngine = " + error1.getCode());
 					if (error1.getCode() != AFD_FSDKError.MOK) {
+					    //人脸识别引擎初始化失败
 						Message reg = Message.obtain();
 						reg.what = MSG_CODE;
 						reg.arg1 = MSG_EVENT_FR_ERROR;
@@ -176,10 +187,12 @@ public class RegisterActivity extends Activity implements SurfaceHolder.Callback
 						mUIHandler.sendMessage(reg);
 					}
 					error1 = engine1.AFR_FSDK_GetVersion(version1);
-					Log.d("com.arcsoft", "FR=" + version.toString() + "," + error1.getCode()); //(210, 178 - 478, 446), degree = 1　780, 2208 - 1942, 3370
+                    Log.d("com.arcsoft", "FR=" + version.toString() + "," + error1.getCode()); //(210, 178 - 478, 446), degree = 1　780, 2208 - 1942, 3370
+                    //提取人脸识别特征
 					error1 = engine1.AFR_FSDK_ExtractFRFeature(data, mBitmap.getWidth(), mBitmap.getHeight(), AFR_FSDKEngine.CP_PAF_NV21, new Rect(result.get(0).getRect()), result.get(0).getDegree(), result1);
 					Log.d("com.arcsoft", "Face=" + result1.getFeatureData()[0] + "," + result1.getFeatureData()[1] + "," + result1.getFeatureData()[2] + "," + error1.getCode());
 					if(error1.getCode() == error1.MOK) {
+					    //提取出了特征
 						mAFR_FSDKFace = result1.clone();
 						int width = result.get(0).getRect().width();
 						int height = result.get(0).getRect().height();
@@ -192,6 +205,7 @@ public class RegisterActivity extends Activity implements SurfaceHolder.Callback
 						reg.obj = face_bitmap;
 						mUIHandler.sendMessage(reg);
 					} else {
+					    //没有提取出特征
 						Message reg = Message.obtain();
 						reg.what = MSG_CODE;
 						reg.arg1 = MSG_EVENT_NO_FEATURE;
@@ -200,6 +214,7 @@ public class RegisterActivity extends Activity implements SurfaceHolder.Callback
 					error1 = engine1.AFR_FSDK_UninitialEngine();
 					Log.d("com.arcsoft", "AFR_FSDK_UninitialEngine : " + error1.getCode());
 				} else {
+				    //人脸识别解决为空，不存在人脸
 					Message reg = Message.obtain();
 					reg.what = MSG_CODE;
 					reg.arg1 = MSG_EVENT_NO_FACE;
@@ -209,7 +224,7 @@ public class RegisterActivity extends Activity implements SurfaceHolder.Callback
 				Log.d(TAG, "AFD_FSDK_UninitialFaceEngine =" + err.getCode());
 			}
 		});
-		view.start();
+		view.start(); //视图绘制线程 （surfaceview）
 
 	}
 
@@ -259,6 +274,7 @@ public class RegisterActivity extends Activity implements SurfaceHolder.Callback
 			super.handleMessage(msg);
 			if (msg.what == MSG_CODE) {
 				if (msg.arg1 == MSG_EVENT_REG) {
+				    //注册成功
 					LayoutInflater inflater = LayoutInflater.from(RegisterActivity.this);
 					View layout = inflater.inflate(R.layout.dialog_register, null);
 					mEditText = (EditText) layout.findViewById(R.id.editview);
@@ -273,7 +289,9 @@ public class RegisterActivity extends Activity implements SurfaceHolder.Callback
 							.setPositiveButton("确定", new DialogInterface.OnClickListener() {
 								@Override
 								public void onClick(DialogInterface dialog, int which) {
-									((Application)RegisterActivity.this.getApplicationContext()).mFaceDB.addFace(mEditText.getText().toString(), mAFR_FSDKFace);
+								    //添加人脸结果 用名字作为key
+									((Application)RegisterActivity.this.getApplicationContext())
+                                            .mFaceDB.addFace(mEditText.getText().toString(), mAFR_FSDKFace);
 									mRegisterViewAdapter.notifyDataSetChanged();
 									dialog.dismiss();
 								}
@@ -290,6 +308,7 @@ public class RegisterActivity extends Activity implements SurfaceHolder.Callback
 				} else if(msg.arg1 == MSG_EVENT_NO_FACE ){
 					Toast.makeText(RegisterActivity.this, "没有检测到人脸，请换一张图片", Toast.LENGTH_SHORT).show();
 				} else if(msg.arg1 == MSG_EVENT_FD_ERROR ){
+				    //初始化失败
 					Toast.makeText(RegisterActivity.this, "FD初始化失败，错误码：" + msg.arg2, Toast.LENGTH_SHORT).show();
 				} else if(msg.arg1 == MSG_EVENT_FR_ERROR){
 					Toast.makeText(RegisterActivity.this, "FR初始化失败，错误码：" + msg.arg2, Toast.LENGTH_SHORT).show();
